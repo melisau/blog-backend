@@ -5,7 +5,7 @@ from pydantic import Field
 
 
 class Comment(Document):
-    post_id: PydanticObjectId
+    blog_id: PydanticObjectId
     author_id: PydanticObjectId
     content: str = Field(..., min_length=1)
     created_at: datetime = Field(

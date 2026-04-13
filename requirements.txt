@@ -3,6 +3,6 @@ uvicorn
 beanie
 python-dotenv
 python-jose
-passlib[bcrypt]
+bcrypt
 pymongo[srv]
 pydantic[email]

@@ -15,6 +15,8 @@ class User(Document):
 
     class Settings:
         name = "users"
+        # unique=True at the DB level is the last line of defense against race conditions
+        # when two concurrent requests pass the application-level duplicate check simultaneously.
         indexes = [
             IndexModel([("username", ASCENDING)], name="username_unique", unique=True),
             IndexModel([("email", ASCENDING)], name="email_unique", unique=True),

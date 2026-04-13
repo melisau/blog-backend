@@ -6,4 +6,8 @@ load_dotenv()
 
 MONGODB_URL = os.getenv("MONGODB_URL", "")
 MONGODB_DB_NAME = os.getenv("MONGODB_DB_NAME", "blog_db")
-
+# Must be a long random secret (e.g. secrets.token_hex(32)). Never commit the real value.
+JWT_SECRET = os.getenv("JWT_SECRET", "")
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+# Overridable via env so staging/prod can use a different TTL without code changes.
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))

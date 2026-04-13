@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from core.database import close_db, init_db
-from routers import auth_router
+from routers import auth_router, blogs_router, categories_router, comments_router, users_router
 
 app = FastAPI()
 
@@ -20,6 +20,10 @@ app.add_middleware(
 
 
 app.include_router(auth_router)
+app.include_router(blogs_router)
+app.include_router(categories_router)
+app.include_router(comments_router)
+app.include_router(users_router)
 
 
 @app.on_event("startup")

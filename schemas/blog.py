@@ -4,29 +4,30 @@ from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from schemas.category import CategoryResponse
+from schemas.types import PyObjectId
 
 
-class PostCreate(BaseModel):
+class BlogCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     content: str = Field(..., min_length=1)
     category_id: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
 
 
-class PostUpdate(BaseModel):
+class BlogUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=200)
     content: Optional[str] = Field(None, min_length=1)
     category_id: Optional[str] = None
     tags: Optional[List[str]] = None
 
 
-class PostResponse(BaseModel):
+class BlogResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: str
+    id: PyObjectId
     title: str
     content: str
-    author_id: str
+    author_id: PyObjectId
     category: Optional[CategoryResponse] = None
     tags: List[str]
     created_at: datetime
