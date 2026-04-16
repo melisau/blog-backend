@@ -1,10 +1,18 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
+from core.config import UPLOAD_DIR
 from core.database import close_db, init_db
 from routers import auth_router, blogs_router, categories_router, comments_router, users_router
 
 app = FastAPI()
+
+# Statik dosya sunucusu: /uploads/<path> isteklerini UPLOAD_DIR klasöründen karşılar.
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.mount(f"/{UPLOAD_DIR}", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 origins = [
     "http://localhost:5173",

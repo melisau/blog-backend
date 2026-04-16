@@ -30,5 +30,6 @@ class BlogResponse(BaseModel):
     author_id: PyObjectId
     category: Optional[CategoryResponse] = None
     tags: List[str]
+    cover_image_url: Optional[str] = None
     created_at: datetime
     updated_at: datetime

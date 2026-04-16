@@ -15,6 +15,7 @@ class Blog(Document):
     # Link[Category] stores a DBRef in MongoDB; use category.$id to query the ObjectId directly.
     category: Optional[Link[Category]] = None
     tags: List[str] = Field(default_factory=list)
+    cover_image_url: Optional[str] = None
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
     )

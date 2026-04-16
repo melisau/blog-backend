@@ -6,3 +6,4 @@ python-jose
 bcrypt
 pymongo[srv]
 pydantic[email]
+python-multipart

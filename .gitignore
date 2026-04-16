@@ -52,3 +52,5 @@ htmlcov/
 # İşletim sistemi
 .DS_Store
 Thumbs.db
+
+uploads/
