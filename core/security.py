@@ -18,7 +18,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 def create_access_token(subject: str) -> str:
     # timezone.utc is required; naive datetimes cause incorrect expiry comparisons in jose.
-    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.now(timezone.utc) + timedelta(days=ACCESS_TOKEN_EXPIRE_MINUTES)
     # "sub" is the standard JWT claim for the principal identity (RFC 7519).
     payload = {"sub": subject, "exp": expire}
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)

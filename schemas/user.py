@@ -25,6 +25,7 @@ class UserResponse(BaseModel):
     id: PyObjectId
     username: str
     email: EmailStr
+    icon_id: int
     created_at: datetime
 
 
@@ -35,6 +36,7 @@ class UserPublicResponse(BaseModel):
 
     id: PyObjectId
     username: str
+    icon_id: int
     created_at: datetime
 
 
@@ -46,6 +48,8 @@ class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     # Plain-text password; the router is responsible for hashing before persisting.
     password: Optional[str] = Field(None, min_length=8)
+    # Frontend icon library ID; must be a positive integer matching a valid icon.
+    icon_id: Optional[int] = Field(None, ge=1)
 
 
 class TokenResponse(BaseModel):

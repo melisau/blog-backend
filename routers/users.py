@@ -20,6 +20,111 @@ async def _blog_to_response(blog: Blog) -> BlogResponse:
     return BlogResponse.model_validate(blog)
 
 
+# ── Favorites (/me/favorites) ────────────────────────────────────────────────
+# These routes MUST be declared before /{user_id} so that the literal "me"
+# segment is not swallowed by the dynamic path parameter.
+
+@router.get("/me/favorites", response_model=List[BlogResponse])
+async def list_favorites(
+    current_user: User = Depends(get_current_user),
+) -> List[BlogResponse]:
+    """Return all blogs the authenticated user has saved to their library."""
+    if not current_user.favorites:
+        return []
+    blogs = await Blog.find({"_id": {"$in": current_user.favorites}}).to_list()
+    return [await _blog_to_response(b) for b in blogs]
+
+
+@router.post("/me/favorites/{blog_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def add_favorite(
+    blog_id: str,
+    current_user: User = Depends(get_current_user),
+) -> None:
+    """Add a blog to the authenticated user's library (idempotent)."""
+    try:
+        oid = PydanticObjectId(blog_id)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid blog id.")
+
+    blog = await Blog.get(oid)
+    if not blog:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog not found.")
+
+    if oid not in current_user.favorites:
+        current_user.favorites.append(oid)
+        await current_user.save()
+
+
+@router.delete("/me/favorites/{blog_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_favorite(
+    blog_id: str,
+    current_user: User = Depends(get_current_user),
+) -> None:
+    """Remove a blog from the authenticated user's library (idempotent)."""
+    try:
+        oid = PydanticObjectId(blog_id)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid blog id.")
+
+    if oid in current_user.favorites:
+        current_user.favorites.remove(oid)
+        await current_user.save()
+
+
+# ── Following (/me/following) ────────────────────────────────────────────────
+
+@router.get("/me/following", response_model=List[UserPublicResponse])
+async def list_following(
+    current_user: User = Depends(get_current_user),
+) -> List[UserPublicResponse]:
+    """Return the list of users the authenticated user is following."""
+    if not current_user.following:
+        return []
+    users = await User.find({"_id": {"$in": current_user.following}}).to_list()
+    return [UserPublicResponse.model_validate(u) for u in users]
+
+
+@router.post("/me/following/{target_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def follow_user(
+    target_id: str,
+    current_user: User = Depends(get_current_user),
+) -> None:
+    """Follow another user (idempotent). Cannot follow yourself."""
+    try:
+        oid = PydanticObjectId(target_id)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user id.")
+
+    if oid == current_user.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot follow yourself.")
+
+    target = await User.get(oid)
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+
+    if oid not in current_user.following:
+        current_user.following.append(oid)
+        await current_user.save()
+
+
+@router.delete("/me/following/{target_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def unfollow_user(
+    target_id: str,
+    current_user: User = Depends(get_current_user),
+) -> None:
+    """Unfollow a user (idempotent)."""
+    try:
+        oid = PydanticObjectId(target_id)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user id.")
+
+    if oid in current_user.following:
+        current_user.following.remove(oid)
+        await current_user.save()
+
+
+# ── Public user endpoints (/{ user_id}) ──────────────────────────────────────
+
 @router.get("/{user_id}", response_model=UserPublicResponse)
 async def get_user(user_id: str) -> UserPublicResponse:
     """Return a user's public profile. Email is intentionally excluded."""
@@ -67,6 +172,9 @@ async def update_user(
     if "password" in updated and payload.password is not None:
         # Hash the new password before storing; never persist plain text.
         user.hashed_password = hash_password(payload.password)
+
+    if "icon_id" in updated and payload.icon_id is not None:
+        user.icon_id = payload.icon_id
 
     await user.save()
     return UserResponse.model_validate(user)
