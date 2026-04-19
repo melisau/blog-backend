@@ -33,3 +33,8 @@ class BlogResponse(BaseModel):
     cover_image_url: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    # Computed engagement counters (not persisted on the Blog document).
+    # Defaulted to 0 so create/update endpoints that don't recompute them
+    # still satisfy the response schema.
+    favorite_count: int = 0
+    comment_count: int = 0

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from core.deps import get_current_user
 from core.security import hash_password
 from models.blog import Blog
+from models.comment import Comment
 from models.user import User
 from schemas.blog import BlogResponse
 from schemas.user import UserPublicResponse, UserResponse, UserUpdate
@@ -17,7 +18,16 @@ async def _blog_to_response(blog: Blog) -> BlogResponse:
     # Populate the category Link before serializing so CategoryResponse fields are available.
     if blog.category:
         await blog.fetch_link(Blog.category)
-    return BlogResponse.model_validate(blog)
+
+    # Mirror the engagement-count enrichment from blogs router so the BlogCard
+    # in /library and /profile renders identical numbers as the home page.
+    comment_count = await Comment.find(Comment.blog_id == blog.id).count()
+    favorite_count = await User.find({"favorites": blog.id}).count()
+
+    response = BlogResponse.model_validate(blog)
+    response.comment_count = comment_count
+    response.favorite_count = favorite_count
+    return response
 
 
 # ── Favorites (/me/favorites) ────────────────────────────────────────────────

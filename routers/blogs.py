@@ -9,6 +9,7 @@ from core.config import ALLOWED_IMAGE_TYPES, MAX_IMAGE_SIZE_MB
 from core.deps import get_current_user
 from models.blog import Blog
 from models.category import Category
+from models.comment import Comment
 from models.user import User
 from schemas.blog import BlogResponse
 from services.storage import LocalStorageService
@@ -25,7 +26,17 @@ async def _to_response(blog: Blog) -> BlogResponse:
     # Populate the category Link so CategoryResponse fields are available for serialization.
     if blog.category:
         await blog.fetch_link(Blog.category)
-    return BlogResponse.model_validate(blog)
+
+    # Engagement counts are computed on read because they live in separate
+    # collections (comments) or denormalised arrays (User.favorites). Counting
+    # at query time keeps the Blog document free of stale duplicate state.
+    comment_count = await Comment.find(Comment.blog_id == blog.id).count()
+    favorite_count = await User.find({"favorites": blog.id}).count()
+
+    response = BlogResponse.model_validate(blog)
+    response.comment_count = comment_count
+    response.favorite_count = favorite_count
+    return response
 
 
 async def _validate_and_save_image(
