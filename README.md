@@ -88,6 +88,43 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 - `PUT /blogs/{blog_id}`
 - `DELETE /blogs/{blog_id}`
 
+#### Blog Listeleme Filtreleri (`GET /blogs`)
+
+Desteklenen query parametreleri:
+
+- `skip` (varsayılan: `0`)
+- `limit` (varsayılan: `10`, max: `100`)
+- `category_id`
+- `category` (legacy slug/name desteği)
+- `tag`
+- `tags` (`tag` için legacy alias)
+- `q` (`title` + `content` full-text)
+- `search` (`q` için legacy alias)
+- `author_id`
+
+Tag filtreleme davranışı:
+
+- Etiket değeri `strip()` ile normalize edilir (baş/son boşluklar temizlenir).
+- Büyük/küçük harf duyarsız eşleşir (`Python`, `python`, `PYTHON` aynıdır).
+- Tam eşleşme yapılır (`web` araması `websocket` döndürmez).
+- Hem string-array (`["python"]`) hem legacy object formatı (`[{"name":"python"}]`) desteklenir.
+- Özel karakter içeren etiketlerde güvenli regex kaçışlaması uygulanır.
+
+Örnekler:
+
+```http
+GET /blogs?tag=python
+GET /blogs?tags=Python
+GET /blogs?tag=%20fastapi%20
+GET /blogs?q=jwt&tag=security
+```
+
+Frontend notu (etikete tekrar tıklama):
+
+- İlk tıkta ilgili etiket ile istek atın: `GET /blogs?tag=<etiket>`
+- Aynı etikete tekrar tıklandığında filtreyi kaldırın: `GET /blogs` (tag parametresiz)
+- Bu toggle davranışı frontend state tarafında yönetilmelidir; backend stateless çalışır.
+
 ### Comments
 - `GET /blogs/{blog_id}/comments`
 - `POST /blogs/{blog_id}/comments`
