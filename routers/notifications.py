@@ -22,13 +22,21 @@ async def _build_notifications(current_user: User) -> List[NotificationItem]:
         comments = await Comment.find(
             {"blog_id": {"$in": post_ids}, "author_id": {"$ne": current_user.id}}
         ).to_list()
+
+        commenter_ids = list({c.author_id for c in comments})
+        username_by_id: dict = {}
+        if commenter_ids:
+            commenters = await User.find({"_id": {"$in": commenter_ids}}).to_list()
+            username_by_id = {u.id: u.username for u in commenters}
+
         for c in comments:
             is_read = c.created_at <= current_user.notifications_last_read_at
+            commenter_name = username_by_id.get(c.author_id, "Bir kullanıcı")
             items.append(
                 NotificationItem(
                     id=f"comment:{c.id}",
                     type="comment",
-                    message="Yazınıza yeni bir yorum yapıldı.",
+                    message=f"{commenter_name} yazınıza yeni bir yorum yaptı.",
                     created_at=c.created_at,
                     read=is_read,
                     blog_id=c.blog_id,
