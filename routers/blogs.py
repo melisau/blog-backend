@@ -121,8 +121,10 @@ async def list_blogs(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(10, ge=1, le=100, description="Maximum number of records to return"),
     category_id: Optional[str] = Query(None, description="Category id to filter by"),
+    category: Optional[str] = Query(None, description="Legacy category slug/name filter"),
     tag: Optional[str] = Query(None, description="Tag to filter by"),
     q: Optional[str] = Query(None, description="Full-text search on blog title and content"),
+    search: Optional[str] = Query(None, description="Legacy full-text search alias"),
     author_id: Optional[str] = Query(None, description="Author id to filter by"),
 ) -> BlogListResponse:
     mongo_filters: list = []
@@ -139,11 +141,28 @@ async def list_blogs(
                 detail="Category not found.",
             )
         mongo_filters.append({"category.$id": cat.id})
+    elif category:
+        # Backward compatible filter: support both slug and human-readable name.
+        cat = await Category.find_one(
+            {
+                "$or": [
+                    {"slug": {"$regex": f"^{category}$", "$options": "i"}},
+                    {"name": {"$regex": f"^{category}$", "$options": "i"}},
+                ]
+            }
+        )
+        if not cat:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Category not found.",
+            )
+        mongo_filters.append({"category.$id": cat.id})
 
     if tag:
         mongo_filters.append({"tags": tag})
-    if q:
-        mongo_filters.append({"$text": {"$search": q}})
+    query_text = q or search
+    if query_text:
+        mongo_filters.append({"$text": {"$search": query_text}})
     if author_id:
         try:
             author_oid = PydanticObjectId(author_id)
