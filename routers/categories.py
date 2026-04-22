@@ -1,19 +1,17 @@
-from typing import List
-
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from core.deps import get_current_user
 from models.category import Category
 from models.user import User
-from schemas.category import CategoryCreate, CategoryResponse
+from schemas.category import CategoryCreate, CategoryListResponse, CategoryResponse
 
 router = APIRouter(prefix="/categories", tags=["categories"])
 
 
-@router.get("", response_model=List[CategoryResponse])
-async def list_categories() -> List[CategoryResponse]:
+@router.get("", response_model=CategoryListResponse)
+async def list_categories() -> CategoryListResponse:
     categories = await Category.find_all().to_list()
-    return [CategoryResponse.model_validate(c) for c in categories]
+    return CategoryListResponse(items=[CategoryResponse.model_validate(c) for c in categories])
 
 
 @router.get("/{category_id}", response_model=CategoryResponse)

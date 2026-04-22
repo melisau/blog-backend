@@ -12,6 +12,7 @@ from routers import (
     categories_router,
     comments_router,
     notifications_router,
+    tags_router,
     users_router,
 )
 
@@ -39,6 +40,7 @@ app.include_router(blogs_router)
 app.include_router(categories_router)
 app.include_router(comments_router)
 app.include_router(notifications_router)
+app.include_router(tags_router)
 app.include_router(users_router)
 
 

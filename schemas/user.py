@@ -18,15 +18,17 @@ class UserLogin(BaseModel):
 
 
 class UserResponse(BaseModel):
-    """Full response returned to the authenticated user (includes email)."""
+    """Full response returned to the authenticated user."""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: PyObjectId
     username: str
-    email: EmailStr
-    icon_id: int
+    email: EmailStr | None = None
+    bio: str | None = None
+    icon_id: int | None = None
     created_at: datetime
+    updated_at: datetime
 
 
 class UserPublicResponse(BaseModel):
@@ -36,18 +38,17 @@ class UserPublicResponse(BaseModel):
 
     id: PyObjectId
     username: str
-    icon_id: int
+    bio: str | None = None
+    icon_id: int | None = None
     created_at: datetime
+    updated_at: datetime
 
 
 class UserUpdate(BaseModel):
     """Fields the owner may change on their own profile; all are optional."""
 
-    username: Optional[str] = Field(None, min_length=1, max_length=64)
-    # Changing the email requires re-uniqueness validation in the router.
-    email: Optional[EmailStr] = None
-    # Plain-text password; the router is responsible for hashing before persisting.
-    password: Optional[str] = Field(None, min_length=8)
+    username: Optional[str] = Field(None, min_length=3, max_length=50)
+    bio: Optional[str] = Field(None, max_length=300)
     # Frontend icon library ID; must be a positive integer matching a valid icon.
     icon_id: Optional[int] = Field(None, ge=1)
 
@@ -64,3 +65,10 @@ class UserConnectionsResponse(BaseModel):
     followers: list[UserPublicResponse]
     following_count: int
     followers_count: int
+
+
+class UserStatsResponse(BaseModel):
+    post_count: int = Field(..., ge=0)
+    comment_count: int = Field(..., ge=0)
+    followers_count: int = Field(..., ge=0)
+    following_count: int = Field(..., ge=0)

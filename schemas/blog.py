@@ -24,10 +24,15 @@ class BlogUpdate(BaseModel):
 class BlogResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    class BlogAuthorResponse(BaseModel):
+        id: PyObjectId
+        username: str
+        icon_id: int | None = None
+
     id: PyObjectId
     title: str
     content: str
-    author_id: PyObjectId
+    author: BlogAuthorResponse
     category: Optional[CategoryResponse] = None
     tags: List[str]
     cover_image_url: Optional[str] = None
@@ -38,3 +43,10 @@ class BlogResponse(BaseModel):
     # still satisfy the response schema.
     favorite_count: int = 0
     comment_count: int = 0
+
+
+class BlogListResponse(BaseModel):
+    items: list[BlogResponse]
+    total: int
+    limit: int
+    skip: int

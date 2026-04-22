@@ -1,15 +1,21 @@
+from datetime import datetime, timezone
 from typing import List
 
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from core.deps import get_current_user
-from core.security import hash_password
 from models.blog import Blog
 from models.comment import Comment
 from models.user import User
 from schemas.blog import BlogResponse
-from schemas.user import UserConnectionsResponse, UserPublicResponse, UserResponse, UserUpdate
+from schemas.user import (
+    UserConnectionsResponse,
+    UserPublicResponse,
+    UserResponse,
+    UserStatsResponse,
+    UserUpdate,
+)
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -24,7 +30,25 @@ async def _blog_to_response(blog: Blog) -> BlogResponse:
     comment_count = await Comment.find(Comment.blog_id == blog.id).count()
     favorite_count = await User.find({"favorites": blog.id}).count()
 
-    response = BlogResponse.model_validate(blog)
+    author = await User.get(blog.author_id)
+    if not author:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Author not found.")
+
+    response = BlogResponse(
+        id=str(blog.id),
+        title=blog.title,
+        content=blog.content,
+        author={
+            "id": str(author.id),
+            "username": author.username,
+            "icon_id": author.icon_id,
+        },
+        category=blog.category,
+        tags=blog.tags,
+        cover_image_url=blog.cover_image_url,
+        created_at=blog.created_at,
+        updated_at=blog.updated_at,
+    )
     response.comment_count = comment_count
     response.favorite_count = favorite_count
     return response
@@ -82,6 +106,12 @@ async def remove_favorite(
 
 
 # ── Following (/me/following) ────────────────────────────────────────────────
+
+@router.get("/me", response_model=UserResponse)
+async def get_me(current_user: User = Depends(get_current_user)) -> UserResponse:
+    """Return authenticated user's own profile including email."""
+    return UserResponse.model_validate(current_user)
+
 
 @router.get("/me/following", response_model=List[UserPublicResponse])
 async def list_following(
@@ -192,13 +222,15 @@ async def get_user_connections(user_id: str) -> UserConnectionsResponse:
 
 # ── Public user endpoints (/{ user_id}) ──────────────────────────────────────
 
-@router.get("/{user_id}", response_model=UserPublicResponse)
-async def get_user(user_id: str) -> UserPublicResponse:
-    """Return a user's public profile. Email is intentionally excluded."""
+@router.get("/{user_id}", response_model=UserResponse)
+async def get_user(user_id: str) -> UserResponse:
+    """Return a user's public profile. Email is never returned here."""
     user = await User.get(user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
-    return UserPublicResponse.model_validate(user)
+    response = UserResponse.model_validate(user)
+    response.email = None
+    return response
 
 
 @router.put("/{user_id}", response_model=UserResponse)
@@ -208,9 +240,8 @@ async def update_user(
     current_user: User = Depends(get_current_user),
 ) -> UserResponse:
     """Update profile information. Only the account owner may call this endpoint."""
-    # Prevent one user from modifying another user's profile.
     if str(current_user.id) != user_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed.")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bu profili düzenleyemezsiniz.")
 
     user = await User.get(user_id)
     if not user:
@@ -219,32 +250,40 @@ async def update_user(
     updated = payload.model_fields_set
 
     if "username" in updated and payload.username is not None:
-        # Reject the change if another account already holds this username.
         if await User.find_one(User.username == payload.username, User.id != PydanticObjectId(user_id)):
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Username is already taken.",
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Bu kullanıcı adı zaten kullanılıyor.",
             )
         user.username = payload.username
 
-    if "email" in updated and payload.email is not None:
-        # Reject the change if another account already holds this email address.
-        if await User.find_one(User.email == payload.email, User.id != PydanticObjectId(user_id)):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email is already in use.",
-            )
-        user.email = payload.email
+    if "bio" in updated:
+        user.bio = payload.bio
 
-    if "password" in updated and payload.password is not None:
-        # Hash the new password before storing; never persist plain text.
-        user.hashed_password = hash_password(payload.password)
-
-    if "icon_id" in updated and payload.icon_id is not None:
+    if "icon_id" in updated:
         user.icon_id = payload.icon_id
 
+    user.updated_at = datetime.now(timezone.utc)
     await user.save()
     return UserResponse.model_validate(user)
+
+
+@router.get("/{user_id}/stats", response_model=UserStatsResponse)
+async def get_user_stats(user_id: str) -> UserStatsResponse:
+    user = await User.get(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+
+    post_count = await Blog.find(Blog.author_id == user.id).count()
+    comment_count = await Comment.find(Comment.author_id == user.id).count()
+    followers_count = await User.find({"following": user.id}).count()
+    following_count = len(user.following)
+    return UserStatsResponse(
+        post_count=post_count,
+        comment_count=comment_count,
+        followers_count=followers_count,
+        following_count=following_count,
+    )
 
 
 @router.get("/{user_id}/posts", response_model=List[BlogResponse])

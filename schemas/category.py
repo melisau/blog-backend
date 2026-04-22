@@ -14,3 +14,7 @@ class CategoryResponse(BaseModel):
     id: PyObjectId
     name: str
     slug: str
+
+
+class CategoryListResponse(BaseModel):
+    items: list[CategoryResponse]
