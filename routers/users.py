@@ -1,7 +1,7 @@
 from typing import List
 
 from beanie import PydanticObjectId
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from core.deps import get_current_user
 from core.security import hash_password
@@ -9,7 +9,7 @@ from models.blog import Blog
 from models.comment import Comment
 from models.user import User
 from schemas.blog import BlogResponse
-from schemas.user import UserPublicResponse, UserResponse, UserUpdate
+from schemas.user import UserConnectionsResponse, UserPublicResponse, UserResponse, UserUpdate
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -131,6 +131,63 @@ async def unfollow_user(
     if oid in current_user.following:
         current_user.following.remove(oid)
         await current_user.save()
+
+
+# ── Public follow lists (/users/{id}/following, /users/{id}/followers) ───────
+
+@router.get("/{user_id}/following", response_model=List[UserPublicResponse])
+async def list_user_following(
+    user_id: str,
+    skip: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(20, ge=1, le=100, description="Maximum number of records to return"),
+) -> List[UserPublicResponse]:
+    """Return users that the given user follows (paginated)."""
+    user = await User.get(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+    if not user.following:
+        return []
+    users = await User.find({"_id": {"$in": user.following}}).skip(skip).limit(limit).to_list()
+    return [UserPublicResponse.model_validate(u) for u in users]
+
+
+@router.get("/{user_id}/followers", response_model=List[UserPublicResponse])
+async def list_user_followers(
+    user_id: str,
+    skip: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(20, ge=1, le=100, description="Maximum number of records to return"),
+) -> List[UserPublicResponse]:
+    """Return users that follow the given user (paginated)."""
+    user = await User.get(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+    followers = await User.find({"following": user.id}).skip(skip).limit(limit).to_list()
+    return [UserPublicResponse.model_validate(u) for u in followers]
+
+
+@router.get("/{user_id}/connections", response_model=UserConnectionsResponse)
+async def get_user_connections(user_id: str) -> UserConnectionsResponse:
+    """Following/follower lists and counts in one public payload (no email)."""
+    user = await User.get(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+
+    following_users = (
+        await User.find({"_id": {"$in": user.following}}).to_list()
+        if user.following
+        else []
+    )
+    follower_users = await User.find({"following": user.id}).to_list()
+
+    following = [UserPublicResponse.model_validate(u) for u in following_users]
+    followers = [UserPublicResponse.model_validate(u) for u in follower_users]
+
+    return UserConnectionsResponse(
+        following=following,
+        followers=followers,
+        following_count=len(following),
+        followers_count=len(followers),
+    )
 
 
 # ── Public user endpoints (/{ user_id}) ──────────────────────────────────────

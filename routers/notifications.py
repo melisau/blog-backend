@@ -23,12 +23,14 @@ async def _build_notifications(current_user: User) -> List[NotificationItem]:
             {"blog_id": {"$in": post_ids}, "author_id": {"$ne": current_user.id}}
         ).to_list()
         for c in comments:
+            is_read = c.created_at <= current_user.notifications_last_read_at
             items.append(
                 NotificationItem(
                     id=f"comment:{c.id}",
                     type="comment",
                     message="Yazınıza yeni bir yorum yapıldı.",
                     created_at=c.created_at,
+                    read=is_read,
                     blog_id=c.blog_id,
                     actor_user_id=c.author_id,
                 )
@@ -36,12 +38,14 @@ async def _build_notifications(current_user: User) -> List[NotificationItem]:
 
     followers = await User.find({"following": current_user.id, "_id": {"$ne": current_user.id}}).to_list()
     for f in followers:
+        is_read = f.created_at <= current_user.notifications_last_read_at
         items.append(
             NotificationItem(
                 id=f"follow:{f.id}",
                 type="follow",
                 message=f"{f.username} sizi takip etmeye başladı.",
                 created_at=f.created_at,
+                read=is_read,
                 actor_user_id=f.id,
             )
         )

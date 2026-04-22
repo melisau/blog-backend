@@ -13,6 +13,7 @@ class NotificationItem(BaseModel):
     type: Literal["comment", "follow"]
     message: str
     created_at: datetime
+    read: bool = False
     blog_id: Optional[PyObjectId] = None
     actor_user_id: Optional[PyObjectId] = None
 

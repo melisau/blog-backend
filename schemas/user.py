@@ -55,3 +55,12 @@ class UserUpdate(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class UserConnectionsResponse(BaseModel):
+    """Public follow stats and lists: who this user follows and who follows them (no email)."""
+
+    following: list[UserPublicResponse]
+    followers: list[UserPublicResponse]
+    following_count: int
+    followers_count: int
