@@ -15,6 +15,10 @@ class User(Document):
     favorites: List[PydanticObjectId] = Field(default_factory=list)
     # Stores the ObjectIds of users this user is following.
     following: List[PydanticObjectId] = Field(default_factory=list)
+    # Used to compute unread notification counts from derived events.
+    notifications_last_read_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+    )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
     )

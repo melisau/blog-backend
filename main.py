@@ -6,7 +6,14 @@ from fastapi.staticfiles import StaticFiles
 
 from core.config import UPLOAD_DIR
 from core.database import close_db, init_db
-from routers import auth_router, blogs_router, categories_router, comments_router, users_router
+from routers import (
+    auth_router,
+    blogs_router,
+    categories_router,
+    comments_router,
+    notifications_router,
+    users_router,
+)
 
 app = FastAPI()
 
@@ -31,6 +38,7 @@ app.include_router(auth_router)
 app.include_router(blogs_router)
 app.include_router(categories_router)
 app.include_router(comments_router)
+app.include_router(notifications_router)
 app.include_router(users_router)
 
 
