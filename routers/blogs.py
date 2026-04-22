@@ -1,4 +1,5 @@
 import json
+import re
 from collections import Counter
 from datetime import datetime, timezone
 from typing import Any, List, Optional
@@ -103,6 +104,28 @@ def _parse_tags(value: Any) -> list[str]:
     raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="tags formatı geçersiz.")
 
 
+def _normalize_tag_query(raw_tag: Optional[str], raw_tags: Optional[str]) -> Optional[str]:
+    value = raw_tag if raw_tag not in (None, "") else raw_tags
+    if value is None:
+        return None
+
+    normalized = str(value).strip()
+    if not normalized:
+        return None
+
+    if normalized.startswith("{") and normalized.endswith("}"):
+        try:
+            parsed = json.loads(normalized)
+        except (json.JSONDecodeError, ValueError):
+            return normalized
+        if isinstance(parsed, dict):
+            for key in ("name", "tag", "value", "label"):
+                candidate = parsed.get(key)
+                if isinstance(candidate, str) and candidate.strip():
+                    return candidate.strip()
+    return normalized
+
+
 async def _resolve_category(category_id: Any) -> Optional[Category]:
     if category_id in (None, ""):
         return None
@@ -123,6 +146,7 @@ async def list_blogs(
     category_id: Optional[str] = Query(None, description="Category id to filter by"),
     category: Optional[str] = Query(None, description="Legacy category slug/name filter"),
     tag: Optional[str] = Query(None, description="Tag to filter by"),
+    tags: Optional[str] = Query(None, description="Legacy tag query alias"),
     q: Optional[str] = Query(None, description="Full-text search on blog title and content"),
     search: Optional[str] = Query(None, description="Legacy full-text search alias"),
     author_id: Optional[str] = Query(None, description="Author id to filter by"),
@@ -158,8 +182,22 @@ async def list_blogs(
             )
         mongo_filters.append({"category.$id": cat.id})
 
-    if tag:
-        mongo_filters.append({"tags": tag})
+    normalized_tag = _normalize_tag_query(tag, tags)
+    if normalized_tag:
+        # URL'den gelen etiketi normalize et (baş/son boşluk), regex özel
+        # karakterlerini kaçır ve tam + case-insensitive eşleşme yap.
+        # `^...$` "web" ararken "websocket" dönmesini engeller; `$options:"i"`
+        # Python/python/PYTHON gibi farkları yok eder. $or ile hem string-array
+        # (yeni şema) hem de legacy {name: "..."} obje formatını kapsıyoruz.
+        tag_pattern = f"^{re.escape(normalized_tag)}$"
+        mongo_filters.append(
+            {
+                "$or": [
+                    {"tags": {"$regex": tag_pattern, "$options": "i"}},
+                    {"tags.name": {"$regex": tag_pattern, "$options": "i"}},
+                ]
+            }
+        )
     query_text = q or search
     if query_text:
         mongo_filters.append({"$text": {"$search": query_text}})
