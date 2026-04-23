@@ -1,4 +1,4 @@
-import json
+﻿import json
 import re
 from collections import Counter
 from datetime import datetime, timezone
@@ -66,7 +66,7 @@ async def _validate_and_save_image(
     if cover_image.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=f"Desteklenmeyen dosya tipi. İzin verilenler: {', '.join(ALLOWED_IMAGE_TYPES)}",
+            detail=f"Desteklenmeyen dosya tipi. Ä°zin verilenler: {', '.join(ALLOWED_IMAGE_TYPES)}",
         )
 
     contents = await cover_image.read()
@@ -74,10 +74,10 @@ async def _validate_and_save_image(
     if len(contents) > max_bytes:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"Dosya boyutu {MAX_IMAGE_SIZE_MB} MB sınırını aşıyor.",
+            detail=f"Dosya boyutu {MAX_IMAGE_SIZE_MB} MB sÄ±nÄ±rÄ±nÄ± aÅŸÄ±yor.",
         )
 
-    # Dosya içeriğini tekrar okunabilir hale getir (read() imleci sona taşıdı).
+    # Dosya iÃ§eriÄŸini tekrar okunabilir hale getir (read() imleci sona taÅŸÄ±dÄ±).
     await cover_image.seek(0)
     return await storage.save_file(cover_image, subfolder="blogs")
 
@@ -93,15 +93,15 @@ def _parse_tags(value: Any) -> list[str]:
         except (json.JSONDecodeError, ValueError):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail='tags geçerli bir JSON dizisi olmalıdır. Örnek: ["python","fastapi"]',
+                detail='tags geÃ§erli bir JSON dizisi olmalÄ±dÄ±r. Ã–rnek: ["python","fastapi"]',
             )
         if not isinstance(parsed, list):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="tags bir dizi olmalıdır.",
+                detail="tags bir dizi olmalÄ±dÄ±r.",
             )
         return [str(v) for v in parsed]
-    raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="tags formatı geçersiz.")
+    raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="tags formatÄ± geÃ§ersiz.")
 
 
 def _normalize_tag_query(raw_tag: Optional[str], raw_tags: Optional[str]) -> Optional[str]:
@@ -184,11 +184,11 @@ async def list_blogs(
 
     normalized_tag = _normalize_tag_query(tag, tags)
     if normalized_tag:
-        # URL'den gelen etiketi normalize et (baş/son boşluk), regex özel
-        # karakterlerini kaçır ve tam + case-insensitive eşleşme yap.
-        # `^...$` "web" ararken "websocket" dönmesini engeller; `$options:"i"`
-        # Python/python/PYTHON gibi farkları yok eder. $or ile hem string-array
-        # (yeni şema) hem de legacy {name: "..."} obje formatını kapsıyoruz.
+        # URL'den gelen etiketi normalize et (baÅŸ/son boÅŸluk), regex Ã¶zel
+        # karakterlerini kaÃ§Ä±r ve tam + case-insensitive eÅŸleÅŸme yap.
+        # `^...$` "web" ararken "websocket" dÃ¶nmesini engeller; `$options:"i"`
+        # Python/python/PYTHON gibi farklarÄ± yok eder. $or ile hem string-array
+        # (yeni ÅŸema) hem de legacy {name: "..."} obje formatÄ±nÄ± kapsÄ±yoruz.
         tag_pattern = f"^{re.escape(normalized_tag)}$"
         mongo_filters.append(
             {
@@ -247,7 +247,7 @@ async def create_blog(
     title = str(payload.get("title", "")).strip()
     content = str(payload.get("content", "")).strip()
     if len(title) < 5 or len(content) < 20:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Validasyon hatası")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Validasyon hatasÄ±")
 
     category = await _resolve_category(payload.get("category_id"))
     parsed_tags = _parse_tags(payload.get("tags"))
@@ -298,11 +298,11 @@ async def update_blog(
     title = str(payload.get("title", "")).strip()
     content = str(payload.get("content", "")).strip()
     if len(title) < 5 or len(content) < 20:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Validasyon hatası")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Validasyon hatasÄ±")
 
     remove_cover_image = str(payload.get("remove_cover_image", "false")).lower() == "true"
     if remove_cover_image and cover_image:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="remove_cover_image ve cover_image birlikte kullanılamaz.")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="remove_cover_image ve cover_image birlikte kullanÄ±lamaz.")
 
     blog.title = title
     blog.content = content
@@ -340,3 +340,4 @@ async def delete_blog(
         await storage.delete_file(blog.cover_image_url)
 
     await blog.delete()
+
