@@ -20,6 +20,29 @@ from schemas.user import (
 router = APIRouter(prefix="/users", tags=["users"])
 
 
+def _format_created_at_display(created_at: datetime) -> str:
+    now = datetime.now(timezone.utc)
+    normalized_created_at = created_at
+    if normalized_created_at.tzinfo is None:
+        normalized_created_at = normalized_created_at.replace(tzinfo=timezone.utc)
+
+    delta_seconds = max(0, int((now - normalized_created_at).total_seconds()))
+    one_day_seconds = 24 * 60 * 60
+
+    if delta_seconds < one_day_seconds:
+        hours = delta_seconds // 3600
+        if hours == 0:
+            minutes = max(1, delta_seconds // 60)
+            if minutes < 60:
+                if minutes == 30:
+                    return "yarım saat önce eklendi"
+                return f"{minutes} dakika önce eklendi"
+            return "1 saat önce eklendi"
+        return f"{hours} saat önce eklendi"
+
+    return normalized_created_at.strftime("%d.%m.%Y %H:%M")
+
+
 async def _blog_to_response(blog: Blog) -> BlogResponse:
     # Populate the category Link before serializing so CategoryResponse fields are available.
     if blog.category:
@@ -47,6 +70,7 @@ async def _blog_to_response(blog: Blog) -> BlogResponse:
         tags=blog.tags,
         cover_image_url=blog.cover_image_url,
         created_at=blog.created_at,
+        created_at_display=_format_created_at_display(blog.created_at),
         updated_at=blog.updated_at,
     )
     response.comment_count = comment_count
