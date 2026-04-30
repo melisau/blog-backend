@@ -22,23 +22,23 @@ from services.blog_presenter import blog_to_response
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-# ── Favorites (/me/favorites) ────────────────────────────────────────────────
+# ── Library (/me/library) ──────────────────────────────────────────────────
 # These routes MUST be declared before /{user_id} so that the literal "me"
 # segment is not swallowed by the dynamic path parameter.
 
-@router.get("/me/favorites", response_model=List[BlogResponse])
-async def list_favorites(
+@router.get("/me/library", response_model=List[BlogResponse])
+async def list_library(
     current_user: User = Depends(get_current_user),
 ) -> List[BlogResponse]:
     """Return all blogs the authenticated user has saved to their library."""
-    if not current_user.favorites:
+    if not current_user.saved_blogs:
         return []
-    blogs = await Blog.find({"_id": {"$in": current_user.favorites}}).to_list()
+    blogs = await Blog.find({"_id": {"$in": current_user.saved_blogs}}).to_list()
     return [await blog_to_response(b) for b in blogs]
 
 
-@router.post("/me/favorites/{blog_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def add_favorite(
+@router.post("/me/library/{blog_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def add_to_library(
     blog_id: str,
     current_user: User = Depends(get_current_user),
 ) -> None:
@@ -52,13 +52,13 @@ async def add_favorite(
     if not blog:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog not found.")
 
-    if oid not in current_user.favorites:
-        current_user.favorites.append(oid)
+    if oid not in current_user.saved_blogs:
+        current_user.saved_blogs.append(oid)
         await current_user.save()
 
 
-@router.delete("/me/favorites/{blog_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def remove_favorite(
+@router.delete("/me/library/{blog_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_from_library(
     blog_id: str,
     current_user: User = Depends(get_current_user),
 ) -> None:
@@ -68,8 +68,59 @@ async def remove_favorite(
     except Exception:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid blog id.")
 
-    if oid in current_user.favorites:
-        current_user.favorites.remove(oid)
+    if oid in current_user.saved_blogs:
+        current_user.saved_blogs.remove(oid)
+        await current_user.save()
+
+
+# ── Likes (/me/likes) ─────────────────────────────────────────────────────
+
+@router.get("/me/likes", response_model=List[BlogResponse])
+async def list_likes(
+    current_user: User = Depends(get_current_user),
+) -> List[BlogResponse]:
+    """Return all blogs the authenticated user has liked."""
+    if not current_user.liked_blogs:
+        return []
+    blogs = await Blog.find({"_id": {"$in": current_user.liked_blogs}}).to_list()
+    return [await blog_to_response(b) for b in blogs]
+
+
+@router.post("/me/likes/{blog_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def toggle_like(
+    blog_id: str,
+    current_user: User = Depends(get_current_user),
+) -> None:
+    """Toggle like for a blog."""
+    try:
+        oid = PydanticObjectId(blog_id)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid blog id.")
+
+    blog = await Blog.get(oid)
+    if not blog:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog not found.")
+
+    if oid in current_user.liked_blogs:
+        current_user.liked_blogs.remove(oid)
+    else:
+        current_user.liked_blogs.append(oid)
+    await current_user.save()
+
+
+@router.delete("/me/likes/{blog_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_like(
+    blog_id: str,
+    current_user: User = Depends(get_current_user),
+) -> None:
+    """Remove like from a blog (idempotent)."""
+    try:
+        oid = PydanticObjectId(blog_id)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid blog id.")
+
+    if oid in current_user.liked_blogs:
+        current_user.liked_blogs.remove(oid)
         await current_user.save()
 
 

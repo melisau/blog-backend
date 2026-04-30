@@ -13,7 +13,9 @@ class User(Document):
     bio: str | None = Field(default=None, max_length=300)
     icon_id: int = Field(default=1, ge=1)
     # Stores the ObjectIds of blogs the user has saved to their library.
-    favorites: List[PydanticObjectId] = Field(default_factory=list)
+    saved_blogs: List[PydanticObjectId] = Field(default_factory=list)
+    # Stores the ObjectIds of blogs the user has liked.
+    liked_blogs: List[PydanticObjectId] = Field(default_factory=list)
     # Stores the ObjectIds of users this user is following.
     following: List[PydanticObjectId] = Field(default_factory=list)
     # Used to compute unread notification counts from derived events.

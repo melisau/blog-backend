@@ -36,7 +36,8 @@ async def blog_to_response(blog: Blog) -> BlogResponse:
         await blog.fetch_link(Blog.category)
 
     comment_count = await Comment.find(Comment.blog_id == blog.id).count()
-    favorite_count = await User.find({"favorites": blog.id}).count()
+    save_count = await User.find({"saved_blogs": blog.id}).count()
+    like_count = await User.find({"liked_blogs": blog.id}).count()
 
     author = await User.get(blog.author_id)
     if not author:
@@ -59,5 +60,6 @@ async def blog_to_response(blog: Blog) -> BlogResponse:
         updated_at=blog.updated_at,
     )
     response.comment_count = comment_count
-    response.favorite_count = favorite_count
+    response.save_count = save_count
+    response.like_count = like_count
     return response
