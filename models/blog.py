@@ -16,6 +16,9 @@ class Blog(Document):
     category: Optional[Link[Category]] = None
     tags: List[str] = Field(default_factory=list)
     cover_image_url: Optional[str] = None
+    save_count: int = Field(default=0, ge=0)
+    favorite_count: int = Field(default=0, ge=0)
+    comment_count: int = Field(default=0, ge=0)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
     )

@@ -35,15 +35,11 @@ async def blog_to_response(blog: Blog) -> BlogResponse:
     if blog.category:
         await blog.fetch_link(Blog.category)
 
-    comment_count = await Comment.find(Comment.blog_id == blog.id).count()
-    save_count = await User.find({"saved_blogs": blog.id}).count()
-    like_count = await User.find({"liked_blogs": blog.id}).count()
-
     author = await User.get(blog.author_id)
     if not author:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Author not found.")
 
-    response = BlogResponse(
+    return BlogResponse(
         id=str(blog.id),
         title=blog.title,
         content=blog.content,
@@ -55,11 +51,10 @@ async def blog_to_response(blog: Blog) -> BlogResponse:
         category=blog.category,
         tags=blog.tags,
         cover_image_url=blog.cover_image_url,
+        save_count=blog.save_count,
+        favorite_count=blog.favorite_count,
+        comment_count=blog.comment_count,
         created_at=blog.created_at,
         created_at_display=format_created_at_display(blog.created_at),
         updated_at=blog.updated_at,
     )
-    response.comment_count = comment_count
-    response.save_count = save_count
-    response.like_count = like_count
-    return response

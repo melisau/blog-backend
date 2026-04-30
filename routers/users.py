@@ -7,7 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from core.deps import get_current_user
 from models.blog import Blog
 from models.comment import Comment
+from models.favorite import Favorite
 from models.follow_event import FollowEvent
+from models.saved_blog import SavedBlog
 from models.user import User
 from schemas.blog import BlogResponse
 from schemas.user import (
@@ -31,9 +33,11 @@ async def list_library(
     current_user: User = Depends(get_current_user),
 ) -> List[BlogResponse]:
     """Return all blogs the authenticated user has saved to their library."""
-    if not current_user.saved_blogs:
+    saved = await SavedBlog.find(SavedBlog.user_id == current_user.id).to_list()
+    if not saved:
         return []
-    blogs = await Blog.find({"_id": {"$in": current_user.saved_blogs}}).to_list()
+    blog_ids = [s.blog_id for s in saved]
+    blogs = await Blog.find({"_id": {"$in": blog_ids}}).to_list()
     return [await blog_to_response(b) for b in blogs]
 
 
@@ -52,9 +56,13 @@ async def add_to_library(
     if not blog:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog not found.")
 
-    if oid not in current_user.saved_blogs:
-        current_user.saved_blogs.append(oid)
-        await current_user.save()
+    saved = await SavedBlog.find_one(
+        SavedBlog.user_id == current_user.id,
+        SavedBlog.blog_id == oid,
+    )
+    if not saved:
+        await SavedBlog(user_id=current_user.id, blog_id=oid).insert()
+        await blog.update({"$inc": {"save_count": 1}})
 
 
 @router.delete("/me/library/{blog_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -68,9 +76,13 @@ async def remove_from_library(
     except Exception:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid blog id.")
 
-    if oid in current_user.saved_blogs:
-        current_user.saved_blogs.remove(oid)
-        await current_user.save()
+    saved = await SavedBlog.find_one(
+        SavedBlog.user_id == current_user.id,
+        SavedBlog.blog_id == oid,
+    )
+    if saved:
+        await saved.delete()
+        await Blog.find_one(Blog.id == oid).update({"$inc": {"save_count": -1}})
 
 
 # ── Likes (/me/likes) ─────────────────────────────────────────────────────
@@ -80,9 +92,11 @@ async def list_likes(
     current_user: User = Depends(get_current_user),
 ) -> List[BlogResponse]:
     """Return all blogs the authenticated user has liked."""
-    if not current_user.liked_blogs:
+    favorites = await Favorite.find(Favorite.user_id == current_user.id).to_list()
+    if not favorites:
         return []
-    blogs = await Blog.find({"_id": {"$in": current_user.liked_blogs}}).to_list()
+    blog_ids = [f.blog_id for f in favorites]
+    blogs = await Blog.find({"_id": {"$in": blog_ids}}).to_list()
     return [await blog_to_response(b) for b in blogs]
 
 
@@ -101,11 +115,16 @@ async def toggle_like(
     if not blog:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog not found.")
 
-    if oid in current_user.liked_blogs:
-        current_user.liked_blogs.remove(oid)
+    favorite = await Favorite.find_one(
+        Favorite.user_id == current_user.id,
+        Favorite.blog_id == oid,
+    )
+    if favorite:
+        await favorite.delete()
+        await blog.update({"$inc": {"favorite_count": -1}})
     else:
-        current_user.liked_blogs.append(oid)
-    await current_user.save()
+        await Favorite(user_id=current_user.id, blog_id=oid).insert()
+        await blog.update({"$inc": {"favorite_count": 1}})
 
 
 @router.delete("/me/likes/{blog_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -119,9 +138,13 @@ async def remove_like(
     except Exception:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid blog id.")
 
-    if oid in current_user.liked_blogs:
-        current_user.liked_blogs.remove(oid)
-        await current_user.save()
+    favorite = await Favorite.find_one(
+        Favorite.user_id == current_user.id,
+        Favorite.blog_id == oid,
+    )
+    if favorite:
+        await favorite.delete()
+        await Blog.find_one(Blog.id == oid).update({"$inc": {"favorite_count": -1}})
 
 
 # ── Following (/me/following) ────────────────────────────────────────────────
@@ -137,9 +160,11 @@ async def list_following(
     current_user: User = Depends(get_current_user),
 ) -> List[UserPublicResponse]:
     """Return the list of users the authenticated user is following."""
-    if not current_user.following:
+    events = await FollowEvent.find(FollowEvent.follower_id == current_user.id).to_list()
+    if not events:
         return []
-    users = await User.find({"_id": {"$in": current_user.following}}).to_list()
+    ids = [e.following_id for e in events]
+    users = await User.find({"_id": {"$in": ids}}).to_list()
     return [UserPublicResponse.model_validate(u) for u in users]
 
 
@@ -161,26 +186,19 @@ async def follow_user(
     if not target:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
 
-    if oid not in current_user.following:
-        current_user.following.append(oid)
-        await current_user.save()
-        await FollowEvent.find_one(
-            FollowEvent.follower_id == current_user.id,
-            FollowEvent.following_id == oid,
-        ).upsert(
-            {
-                "$set": {
-                    "follower_id": current_user.id,
-                    "following_id": oid,
-                    "created_at": datetime.now(timezone.utc),
-                }
-            },
-            on_insert=FollowEvent(
-                follower_id=current_user.id,
-                following_id=oid,
-                created_at=datetime.now(timezone.utc),
-            ),
-        )
+    follow_event = await FollowEvent.find_one(
+        FollowEvent.follower_id == current_user.id,
+        FollowEvent.following_id == oid,
+    )
+    if not follow_event:
+        await FollowEvent(
+            follower_id=current_user.id,
+            following_id=oid,
+            created_at=datetime.now(timezone.utc),
+        ).insert()
+        # Atomic increments
+        await current_user.update({"$inc": {"following_count": 1}})
+        await target.update({"$inc": {"followers_count": 1}})
 
 
 @router.delete("/me/following/{target_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -194,15 +212,15 @@ async def unfollow_user(
     except Exception:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user id.")
 
-    if oid in current_user.following:
-        current_user.following.remove(oid)
-        await current_user.save()
-        follow_event = await FollowEvent.find_one(
-            FollowEvent.follower_id == current_user.id,
-            FollowEvent.following_id == oid,
-        )
-        if follow_event:
-            await follow_event.delete()
+    follow_event = await FollowEvent.find_one(
+        FollowEvent.follower_id == current_user.id,
+        FollowEvent.following_id == oid,
+    )
+    if follow_event:
+        await follow_event.delete()
+        # Atomic decrements
+        await current_user.update({"$inc": {"following_count": -1}})
+        await User.find_one(User.id == oid).update({"$inc": {"followers_count": -1}})
 
 
 # ── Public follow lists (/users/{id}/following, /users/{id}/followers) ───────
@@ -214,12 +232,16 @@ async def list_user_following(
     limit: int = Query(20, ge=1, le=100, description="Maximum number of records to return"),
 ) -> List[UserPublicResponse]:
     """Return users that the given user follows (paginated)."""
-    user = await User.get(user_id)
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
-    if not user.following:
+    try:
+        oid = PydanticObjectId(user_id)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user id.")
+
+    events = await FollowEvent.find(FollowEvent.follower_id == oid).skip(skip).limit(limit).to_list()
+    if not events:
         return []
-    users = await User.find({"_id": {"$in": user.following}}).skip(skip).limit(limit).to_list()
+    ids = [e.following_id for e in events]
+    users = await User.find({"_id": {"$in": ids}}).to_list()
     return [UserPublicResponse.model_validate(u) for u in users]
 
 
@@ -230,26 +252,39 @@ async def list_user_followers(
     limit: int = Query(20, ge=1, le=100, description="Maximum number of records to return"),
 ) -> List[UserPublicResponse]:
     """Return users that follow the given user (paginated)."""
-    user = await User.get(user_id)
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
-    followers = await User.find({"following": user.id}).skip(skip).limit(limit).to_list()
-    return [UserPublicResponse.model_validate(u) for u in followers]
+    try:
+        oid = PydanticObjectId(user_id)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user id.")
+
+    events = await FollowEvent.find(FollowEvent.following_id == oid).skip(skip).limit(limit).to_list()
+    if not events:
+        return []
+    ids = [e.follower_id for e in events]
+    users = await User.find({"_id": {"$in": ids}}).to_list()
+    return [UserPublicResponse.model_validate(u) for u in users]
 
 
 @router.get("/{user_id}/connections", response_model=UserConnectionsResponse)
 async def get_user_connections(user_id: str) -> UserConnectionsResponse:
     """Following/follower lists and counts in one public payload (no email)."""
-    user = await User.get(user_id)
+    try:
+        oid = PydanticObjectId(user_id)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user id.")
+
+    user = await User.get(oid)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
 
-    following_users = (
-        await User.find({"_id": {"$in": user.following}}).to_list()
-        if user.following
-        else []
-    )
-    follower_users = await User.find({"following": user.id}).to_list()
+    following_events = await FollowEvent.find(FollowEvent.follower_id == oid).to_list()
+    follower_events = await FollowEvent.find(FollowEvent.following_id == oid).to_list()
+
+    following_ids = [e.following_id for e in following_events]
+    follower_ids = [e.follower_id for e in follower_events]
+
+    following_users = await User.find({"_id": {"$in": following_ids}}).to_list()
+    follower_users = await User.find({"_id": {"$in": follower_ids}}).to_list()
 
     following = [UserPublicResponse.model_validate(u) for u in following_users]
     followers = [UserPublicResponse.model_validate(u) for u in follower_users]
@@ -257,8 +292,8 @@ async def get_user_connections(user_id: str) -> UserConnectionsResponse:
     return UserConnectionsResponse(
         following=following,
         followers=followers,
-        following_count=len(following),
-        followers_count=len(followers),
+        following_count=user.following_count,
+        followers_count=user.followers_count,
     )
 
 
@@ -312,19 +347,22 @@ async def update_user(
 
 @router.get("/{user_id}/stats", response_model=UserStatsResponse)
 async def get_user_stats(user_id: str) -> UserStatsResponse:
-    user = await User.get(user_id)
+    try:
+        oid = PydanticObjectId(user_id)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user id.")
+
+    user = await User.get(oid)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
 
     post_count = await Blog.find(Blog.author_id == user.id).count()
     comment_count = await Comment.find(Comment.author_id == user.id).count()
-    followers_count = await User.find({"following": user.id}).count()
-    following_count = len(user.following)
     return UserStatsResponse(
         post_count=post_count,
         comment_count=comment_count,
-        followers_count=followers_count,
-        following_count=following_count,
+        followers_count=user.followers_count,
+        following_count=user.following_count,
     )
 
 

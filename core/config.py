@@ -15,4 +15,11 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
 # File upload settings — all overridable via environment variables.
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
 MAX_IMAGE_SIZE_MB = int(os.getenv("MAX_IMAGE_SIZE_MB", "5"))
-ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
+ALLOWED_IMAGE_TYPES = {
+    "image/jpeg", 
+    "image/jpg", 
+    "image/png", 
+    "image/webp", 
+    "image/pjpeg", 
+    "image/x-png"
+}

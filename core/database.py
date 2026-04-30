@@ -2,7 +2,7 @@ from beanie import init_beanie
 from pymongo import AsyncMongoClient
 
 from core.config import MONGODB_DB_NAME, MONGODB_URL
-from models import Blog, Category, Comment, FollowEvent, User
+from models import Blog, Category, Comment, Favorite, FollowEvent, SavedBlog, User
 
 # Beanie 2.x uses PyMongo's AsyncMongoClient, not Motor's AsyncIOMotorClient.
 mongo_client: AsyncMongoClient | None = None
@@ -20,7 +20,7 @@ async def init_db() -> AsyncMongoClient:
     # Beanie resolves forward references in declaration order.
     await init_beanie(
         database=mongo_client[MONGODB_DB_NAME],
-        document_models=[Category, Blog, Comment, User, FollowEvent],
+        document_models=[Category, Blog, Comment, User, FollowEvent, Favorite, SavedBlog],
     )
 
     return mongo_client

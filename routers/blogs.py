@@ -28,15 +28,20 @@ async def _validate_and_save_image(
     cover_image: UploadFile,
     storage: StorageService,
 ) -> str:
+    print(f"DEBUG: Uploading file {cover_image.filename} with type {cover_image.content_type}")
     if cover_image.content_type not in ALLOWED_IMAGE_TYPES:
+        print(f"DEBUG: Unsupported media type: {cover_image.content_type}")
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=f"Desteklenmeyen dosya tipi. İzin verilenler: {', '.join(ALLOWED_IMAGE_TYPES)}",
+            detail=f"Desteklenmeyen dosya tipi ({cover_image.content_type}). İzin verilenler: {', '.join(ALLOWED_IMAGE_TYPES)}",
         )
 
     contents = await cover_image.read()
+    file_size = len(contents)
+    print(f"DEBUG: File size: {file_size} bytes")
     max_bytes = MAX_IMAGE_SIZE_MB * 1024 * 1024
-    if len(contents) > max_bytes:
+    if file_size > max_bytes:
+        print(f"DEBUG: File too large: {file_size} > {max_bytes}")
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"Dosya boyutu {MAX_IMAGE_SIZE_MB} MB sınırını aşıyor.",
@@ -44,7 +49,9 @@ async def _validate_and_save_image(
 
     # Dosya içeriğini tekrar okunabilir hale getir (read() imleci sona taşıdı).
     await cover_image.seek(0)
-    return await storage.save_file(cover_image, subfolder="blogs")
+    url = await storage.save_file(cover_image, subfolder="blogs")
+    print(f"DEBUG: File saved at {url}")
+    return url
 
 
 def _parse_tags(value: Any) -> list[str]:
@@ -198,14 +205,16 @@ async def create_blog(
     current_user: User = Depends(get_current_user),
 ) -> BlogResponse:
     content_type = request.headers.get("content-type", "")
+    print(f"DEBUG: Received request with content-type: {content_type}")
     cover_image: Optional[UploadFile] = None
     payload: dict[str, Any]
     if "multipart/form-data" in content_type:
         form = await request.form()
         payload = dict(form)
         maybe_file = form.get("cover_image")
-        if isinstance(maybe_file, UploadFile) and maybe_file.filename:
+        if maybe_file and getattr(maybe_file, "filename", None):
             cover_image = maybe_file
+            print(f"DEBUG: Found cover_image: {cover_image.filename}")
     else:
         payload = await request.json()
 
@@ -252,7 +261,7 @@ async def update_blog(
         form = await request.form()
         payload = dict(form)
         maybe_file = form.get("cover_image")
-        if isinstance(maybe_file, UploadFile) and maybe_file.filename:
+        if maybe_file and getattr(maybe_file, "filename", None):
             cover_image = maybe_file
     else:
         payload = await request.json()

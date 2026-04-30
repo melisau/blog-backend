@@ -43,7 +43,7 @@ class BlogResponse(BaseModel):
     # Defaulted to 0 so create/update endpoints that don't recompute them
     # still satisfy the response schema.
     save_count: int = 0
-    like_count: int = 0
+    favorite_count: int = 0
     comment_count: int = 0
 
 

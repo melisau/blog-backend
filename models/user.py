@@ -12,12 +12,9 @@ class User(Document):
     hashed_password: str = Field(..., min_length=1)
     bio: str | None = Field(default=None, max_length=300)
     icon_id: int = Field(default=1, ge=1)
-    # Stores the ObjectIds of blogs the user has saved to their library.
-    saved_blogs: List[PydanticObjectId] = Field(default_factory=list)
-    # Stores the ObjectIds of blogs the user has liked.
-    liked_blogs: List[PydanticObjectId] = Field(default_factory=list)
-    # Stores the ObjectIds of users this user is following.
-    following: List[PydanticObjectId] = Field(default_factory=list)
+    # Computed engagement counters
+    followers_count: int = Field(default=0, ge=0)
+    following_count: int = Field(default=0, ge=0)
     # Used to compute unread notification counts from derived events.
     notifications_last_read_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),

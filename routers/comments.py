@@ -70,6 +70,7 @@ async def create_comment(
         content=payload.content,
     )
     await comment.insert()
+    await blog.update({"$inc": {"comment_count": 1}})
     author_by_id = {str(current_user.id): current_user}
     return _comment_to_response(comment, author_by_id)
 
@@ -88,3 +89,4 @@ async def delete_comment(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed.")
 
     await comment.delete()
+    await Blog.find_one(Blog.id == comment.blog_id).update({"$inc": {"comment_count": -1}})
