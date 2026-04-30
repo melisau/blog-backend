@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 from core.deps import get_current_user
 from models.blog import Blog
 from models.comment import Comment
+from models.follow_event import FollowEvent
 from models.user import User
 from schemas.notification import NotificationItem, NotificationListResponse
 
@@ -45,14 +46,25 @@ async def _build_notifications(current_user: User) -> List[NotificationItem]:
             )
 
     followers = await User.find({"following": current_user.id, "_id": {"$ne": current_user.id}}).to_list()
+    follower_ids = [f.id for f in followers]
+    follow_events = (
+        await FollowEvent.find(
+            {"following_id": current_user.id, "follower_id": {"$in": follower_ids}}
+        ).to_list()
+        if follower_ids
+        else []
+    )
+    follow_created_at_by_follower_id = {event.follower_id: event.created_at for event in follow_events}
+
     for f in followers:
-        is_read = f.created_at <= current_user.notifications_last_read_at
+        follow_created_at = follow_created_at_by_follower_id.get(f.id, f.created_at)
+        is_read = follow_created_at <= current_user.notifications_last_read_at
         items.append(
             NotificationItem(
                 id=f"follow:{f.id}",
                 type="follow",
                 message=f"{f.username} sizi takip etmeye başladı.",
-                created_at=f.created_at,
+                created_at=follow_created_at,
                 read=is_read,
                 actor_user_id=f.id,
             )

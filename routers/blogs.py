@@ -11,9 +11,9 @@ from core.config import ALLOWED_IMAGE_TYPES, MAX_IMAGE_SIZE_MB
 from core.deps import get_current_user
 from models.blog import Blog
 from models.category import Category
-from models.comment import Comment
 from models.user import User
 from schemas.blog import BlogListResponse, BlogResponse
+from services.blog_presenter import blog_to_response
 from services.storage import LocalStorageService
 from services.storage.base import StorageService
 
@@ -22,64 +22,6 @@ router = APIRouter(prefix="/blogs", tags=["blogs"])
 # Application-level singleton; swap LocalStorageService for any StorageService
 # implementation (e.g. S3StorageService) without touching the endpoint code.
 storage: StorageService = LocalStorageService()
-
-
-def _format_created_at_display(created_at: datetime) -> str:
-    normalized_created_at = created_at
-    if normalized_created_at.tzinfo is None:
-        normalized_created_at = normalized_created_at.replace(tzinfo=timezone.utc)
-    now = datetime.now(normalized_created_at.tzinfo)
-
-    delta_seconds = max(0, int((now - normalized_created_at).total_seconds()))
-
-    if normalized_created_at.date() == now.date():
-        hours = delta_seconds // 3600
-        if hours == 0:
-            minutes = max(1, delta_seconds // 60)
-            if minutes < 60:
-                if minutes == 30:
-                    return "yarım saat önce eklendi"
-                return f"{minutes} dakika önce eklendi"
-            return "1 saat önce eklendi"
-        return f"{hours} saat önce eklendi"
-
-    return normalized_created_at.strftime("%d.%m.%Y %H:%M")
-
-
-async def _to_response(blog: Blog) -> BlogResponse:
-    # Populate the category Link so CategoryResponse fields are available for serialization.
-    if blog.category:
-        await blog.fetch_link(Blog.category)
-
-    # Engagement counts are computed on read because they live in separate
-    # collections (comments) or denormalised arrays (User.favorites). Counting
-    # at query time keeps the Blog document free of stale duplicate state.
-    comment_count = await Comment.find(Comment.blog_id == blog.id).count()
-    favorite_count = await User.find({"favorites": blog.id}).count()
-
-    author = await User.get(blog.author_id)
-    if not author:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Author not found.")
-
-    response = BlogResponse(
-        id=str(blog.id),
-        title=blog.title,
-        content=blog.content,
-        author={
-            "id": str(author.id),
-            "username": author.username,
-            "icon_id": author.icon_id,
-        },
-        category=blog.category,
-        tags=blog.tags,
-        cover_image_url=blog.cover_image_url,
-        created_at=blog.created_at,
-        created_at_display=_format_created_at_display(blog.created_at),
-        updated_at=blog.updated_at,
-    )
-    response.comment_count = comment_count
-    response.favorite_count = favorite_count
-    return response
 
 
 async def _validate_and_save_image(
@@ -235,7 +177,7 @@ async def list_blogs(
     total = await query.count()
     blogs = await query.skip(skip).limit(limit).to_list()
     return BlogListResponse(
-        items=[await _to_response(b) for b in blogs],
+        items=[await blog_to_response(b) for b in blogs],
         total=total,
         limit=limit,
         skip=skip,
@@ -247,7 +189,7 @@ async def get_blog(blog_id: str) -> BlogResponse:
     blog = await Blog.get(blog_id)
     if not blog:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog not found.")
-    return await _to_response(blog)
+    return await blog_to_response(blog)
 
 
 @router.post("", response_model=BlogResponse, status_code=status.HTTP_201_CREATED)
@@ -287,7 +229,7 @@ async def create_blog(
         cover_image_url=cover_image_url,
     )
     await blog.insert()
-    return await _to_response(blog)
+    return await blog_to_response(blog)
 
 
 @router.put("/{blog_id}", response_model=BlogResponse)
@@ -344,7 +286,7 @@ async def update_blog(
 
     blog.updated_at = datetime.now(timezone.utc)
     await blog.save()
-    return await _to_response(blog)
+    return await blog_to_response(blog)
 
 
 @router.delete("/{blog_id}", status_code=status.HTTP_204_NO_CONTENT)

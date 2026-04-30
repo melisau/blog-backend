@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from core.deps import get_current_user
 from models.blog import Blog
 from models.comment import Comment
+from models.follow_event import FollowEvent
 from models.user import User
 from schemas.blog import BlogResponse
 from schemas.user import (
@@ -16,66 +17,9 @@ from schemas.user import (
     UserStatsResponse,
     UserUpdate,
 )
+from services.blog_presenter import blog_to_response
 
 router = APIRouter(prefix="/users", tags=["users"])
-
-
-def _format_created_at_display(created_at: datetime) -> str:
-    now = datetime.now(timezone.utc)
-    normalized_created_at = created_at
-    if normalized_created_at.tzinfo is None:
-        normalized_created_at = normalized_created_at.replace(tzinfo=timezone.utc)
-
-    delta_seconds = max(0, int((now - normalized_created_at).total_seconds()))
-    one_day_seconds = 24 * 60 * 60
-
-    if delta_seconds < one_day_seconds:
-        hours = delta_seconds // 3600
-        if hours == 0:
-            minutes = max(1, delta_seconds // 60)
-            if minutes < 60:
-                if minutes == 30:
-                    return "yarım saat önce eklendi"
-                return f"{minutes} dakika önce eklendi"
-            return "1 saat önce eklendi"
-        return f"{hours} saat önce eklendi"
-
-    return normalized_created_at.strftime("%d.%m.%Y %H:%M")
-
-
-async def _blog_to_response(blog: Blog) -> BlogResponse:
-    # Populate the category Link before serializing so CategoryResponse fields are available.
-    if blog.category:
-        await blog.fetch_link(Blog.category)
-
-    # Mirror the engagement-count enrichment from blogs router so the BlogCard
-    # in /library and /profile renders identical numbers as the home page.
-    comment_count = await Comment.find(Comment.blog_id == blog.id).count()
-    favorite_count = await User.find({"favorites": blog.id}).count()
-
-    author = await User.get(blog.author_id)
-    if not author:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Author not found.")
-
-    response = BlogResponse(
-        id=str(blog.id),
-        title=blog.title,
-        content=blog.content,
-        author={
-            "id": str(author.id),
-            "username": author.username,
-            "icon_id": author.icon_id,
-        },
-        category=blog.category,
-        tags=blog.tags,
-        cover_image_url=blog.cover_image_url,
-        created_at=blog.created_at,
-        created_at_display=_format_created_at_display(blog.created_at),
-        updated_at=blog.updated_at,
-    )
-    response.comment_count = comment_count
-    response.favorite_count = favorite_count
-    return response
 
 
 # ── Favorites (/me/favorites) ────────────────────────────────────────────────
@@ -90,7 +34,7 @@ async def list_favorites(
     if not current_user.favorites:
         return []
     blogs = await Blog.find({"_id": {"$in": current_user.favorites}}).to_list()
-    return [await _blog_to_response(b) for b in blogs]
+    return [await blog_to_response(b) for b in blogs]
 
 
 @router.post("/me/favorites/{blog_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -169,6 +113,23 @@ async def follow_user(
     if oid not in current_user.following:
         current_user.following.append(oid)
         await current_user.save()
+        await FollowEvent.find_one(
+            FollowEvent.follower_id == current_user.id,
+            FollowEvent.following_id == oid,
+        ).upsert(
+            {
+                "$set": {
+                    "follower_id": current_user.id,
+                    "following_id": oid,
+                    "created_at": datetime.now(timezone.utc),
+                }
+            },
+            on_insert=FollowEvent(
+                follower_id=current_user.id,
+                following_id=oid,
+                created_at=datetime.now(timezone.utc),
+            ),
+        )
 
 
 @router.delete("/me/following/{target_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -185,6 +146,12 @@ async def unfollow_user(
     if oid in current_user.following:
         current_user.following.remove(oid)
         await current_user.save()
+        follow_event = await FollowEvent.find_one(
+            FollowEvent.follower_id == current_user.id,
+            FollowEvent.following_id == oid,
+        )
+        if follow_event:
+            await follow_event.delete()
 
 
 # ── Public follow lists (/users/{id}/following, /users/{id}/followers) ───────
@@ -319,4 +286,4 @@ async def list_user_posts(user_id: str) -> List[BlogResponse]:
 
     # Filter blogs by the author's ObjectId stored in the author_id field.
     blogs = await Blog.find(Blog.author_id == user.id).to_list()
-    return [await _blog_to_response(b) for b in blogs]
+    return [await blog_to_response(b) for b in blogs]
