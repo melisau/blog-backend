@@ -122,6 +122,7 @@ async def list_blogs(
     q: Optional[str] = Query(None, description="Full-text search on blog title and content"),
     search: Optional[str] = Query(None, description="Legacy full-text search alias"),
     author_id: Optional[str] = Query(None, description="Author id to filter by"),
+    sort: str = Query("newest", description="Sorting criteria: 'newest' or 'popular'"),
 ) -> BlogListResponse:
     mongo_filters: list = []
 
@@ -156,11 +157,6 @@ async def list_blogs(
 
     normalized_tag = _normalize_tag_query(tag, tags)
     if normalized_tag:
-        # URL'den gelen etiketi normalize et (baş/son boşluk), regex özel
-        # karakterlerini kaçır ve tam + case-insensitive eşleşme yap.
-        # `^...$` "web" ararken "websocket" dönmesini engeller; `$options:"i"`
-        # Python/python/PYTHON gibi farkları yok eder. $or ile hem string-array
-        # (yeni şema) hem de legacy {name: "..."} obje formatını kapsıyoruz.
         tag_pattern = f"^{re.escape(normalized_tag)}$"
         mongo_filters.append(
             {
@@ -170,9 +166,19 @@ async def list_blogs(
                 ]
             }
         )
-    query_text = q or search
+    query_text = (q or search or "").strip()
     if query_text:
-        mongo_filters.append({"$text": {"$search": query_text}})
+        escaped = re.escape(query_text)
+        mongo_filters.append(
+            {
+                "$or": [
+                    {"title": {"$regex": escaped, "$options": "i"}},
+                    {"content": {"$regex": escaped, "$options": "i"}},
+                    {"tags": {"$regex": escaped, "$options": "i"}},
+                    {"tags.name": {"$regex": escaped, "$options": "i"}},
+                ]
+            }
+        )
     if author_id:
         try:
             author_oid = PydanticObjectId(author_id)
@@ -180,9 +186,41 @@ async def list_blogs(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid author id.")
         mongo_filters.append({"author_id": author_oid})
 
-    query = Blog.find(*mongo_filters) if mongo_filters else Blog.find_all()
-    total = await query.count()
-    blogs = await query.skip(skip).limit(limit).to_list()
+    if sort == "popular":
+        # To sort by a sum of fields, we use an aggregation pipeline to compute
+        # a temporary 'interaction_score' field.
+        pipeline: list[dict[str, Any]] = []
+        if mongo_filters:
+            # Beanie's find(*filters) implicitly ANDs them.
+            pipeline.append({"$match": {"$and": mongo_filters} if len(mongo_filters) > 1 else mongo_filters[0]})
+        
+        pipeline.extend([
+            {
+                "$addFields": {
+                    "interaction_score": {
+                        "$add": ["$favorite_count", "$save_count", "$comment_count"]
+                    }
+                }
+            },
+            {"$sort": {"interaction_score": -1, "created_at": -1}},
+            {"$skip": skip},
+            {"$limit": limit}
+        ])
+        
+        # For total count, we still use the standard find query.
+        count_query = Blog.find(*mongo_filters) if mongo_filters else Blog.find_all()
+        total = await count_query.count()
+        
+        # Beanie's aggregate returns raw dictionaries.
+        raw_blogs = await Blog.aggregate(pipeline).to_list()
+        blogs = [Blog.model_validate(b) for b in raw_blogs]
+    else:
+        # Default: newest (created_at descending)
+        query = Blog.find(*mongo_filters) if mongo_filters else Blog.find_all()
+        query = query.sort([("created_at", -1)])
+        total = await query.count()
+        blogs = await query.skip(skip).limit(limit).to_list()
+
     return BlogListResponse(
         items=[await blog_to_response(b) for b in blogs],
         total=total,

@@ -168,6 +168,20 @@ async def list_following(
     return [UserPublicResponse.model_validate(u) for u in users]
 
 
+@router.get("/search", response_model=List[UserPublicResponse])
+async def search_users(
+    q: str = Query(..., min_length=1, description="Username query"),
+    limit: int = Query(8, ge=1, le=50, description="Maximum number of users to return"),
+) -> List[UserPublicResponse]:
+    term = q.strip()
+    if not term:
+        return []
+    users = await User.find(
+        {"username": {"$regex": term, "$options": "i"}}
+    ).sort([("followers_count", -1), ("created_at", -1)]).limit(limit).to_list()
+    return [UserPublicResponse.model_validate(u) for u in users]
+
+
 @router.post("/me/following/{target_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def follow_user(
     target_id: str,
