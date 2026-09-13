@@ -7,6 +7,11 @@ from models import Blog, Category, Comment, Favorite, FollowEvent, SavedBlog, Us
 # Beanie 2.x uses PyMongo's AsyncMongoClient, not Motor's AsyncIOMotorClient.
 mongo_client: AsyncMongoClient | None = None
 
+DEFAULT_CATEGORIES = (
+    {"name": "Teknoloji", "slug": "teknoloji"},
+    {"name": "Yaşam", "slug": "yasam"},
+)
+
 
 async def init_db() -> AsyncMongoClient:
     global mongo_client
@@ -22,6 +27,9 @@ async def init_db() -> AsyncMongoClient:
         database=mongo_client[MONGODB_DB_NAME],
         document_models=[Category, Blog, Comment, User, FollowEvent, Favorite, SavedBlog],
     )
+
+    if await Category.count() == 0:
+        await Category.insert_many([Category(**category) for category in DEFAULT_CATEGORIES])
 
     return mongo_client
 
