@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from core.deps import get_current_user
 from core.security import create_access_token, hash_password, verify_password
+from core.rate_limit import LOGIN_ACCOUNT_POLICY, enforce_limit, limit_login, limit_registration
 from models.user import User
 from schemas.user import TokenResponse, UserCreate, UserLogin, UserResponse
 
@@ -12,6 +13,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
     "/register",
     response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(limit_registration)],
 )
 async def register(payload: UserCreate) -> UserResponse:
     if await User.find_one(User.email == payload.email):
@@ -36,8 +38,9 @@ async def register(payload: UserCreate) -> UserResponse:
     return UserResponse.model_validate(user)
 
 
-@router.post("/login", response_model=TokenResponse)
-async def login(payload: UserLogin) -> TokenResponse:
+@router.post("/login", response_model=TokenResponse, dependencies=[Depends(limit_login)])
+async def login(payload: UserLogin, request: Request) -> TokenResponse:
+    await enforce_limit(request, LOGIN_ACCOUNT_POLICY, str(payload.email).strip().casefold())
     user = await User.find_one(User.email == payload.email)
 
     # Both "user not found" and "wrong password" return the same 401 to prevent user enumeration.

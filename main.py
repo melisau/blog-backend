@@ -4,8 +4,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from core.config import UPLOAD_DIR
+from core.config import CORS_ORIGINS, MONGODB_DB_NAME, UPLOAD_DIR
 from core.database import close_db, init_db
+from core.rate_limit import MongoRateLimitStore, RateLimiter, WriteRateLimitMiddleware
 from routers import (
     auth_router,
     blogs_router,
@@ -22,16 +23,16 @@ app = FastAPI()
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount(f"/{UPLOAD_DIR}", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
-origins = [
-    "http://localhost:5173",
-]
+app.add_middleware(WriteRateLimitMiddleware)
 
+# CORS stays outside the limiter so 429/503 responses also reach the browser.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Retry-After", "X-RateLimit-Limit", "X-RateLimit-Remaining"],
 )
 
 
@@ -46,7 +47,10 @@ app.include_router(users_router)
 
 @app.on_event("startup")
 async def on_startup() -> None:
-    await init_db()
+    client = await init_db()
+    store = MongoRateLimitStore(client[MONGODB_DB_NAME]["rate_limit_buckets"])
+    await store.initialize()
+    app.state.rate_limiter = RateLimiter(store)
 
 
 @app.on_event("shutdown")

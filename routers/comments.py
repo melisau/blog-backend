@@ -3,6 +3,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from core.deps import get_current_user
+from core.rate_limit import limit_comment_write
 from models.comment import Comment
 from models.blog import Blog
 from models.user import User
@@ -54,6 +55,7 @@ async def list_comments(blog_id: str) -> List[CommentResponse]:
     "/blogs/{blog_id}/comments",
     response_model=CommentResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(limit_comment_write)],
 )
 async def create_comment(
     blog_id: str,

@@ -10,6 +10,10 @@ mongo_client: AsyncMongoClient | None = None
 DEFAULT_CATEGORIES = (
     {"name": "Teknoloji", "slug": "teknoloji"},
     {"name": "Yaşam", "slug": "yasam"},
+    {"name": "PKOS (PCOS) ve Beslenme", "slug": "pkos-pcos-beslenme"},
+    {"name": "IBS ve Beslenme", "slug": "ibs-beslenme"},
+    {"name": "Düşük FODMAP", "slug": "dusuk-fodmap"},
+    {"name": "Beslenme Haberleri", "slug": "beslenme-haberleri"},
 )
 
 
@@ -28,8 +32,16 @@ async def init_db() -> AsyncMongoClient:
         document_models=[Category, Blog, Comment, User, FollowEvent, Favorite, SavedBlog],
     )
 
-    if await Category.count() == 0:
-        await Category.insert_many([Category(**category) for category in DEFAULT_CATEGORIES])
+    # Eksik varsayılan kategorileri tek tek tamamla. Böylece mevcut veritabanları
+    # yeni kategori eklendiğinde yalnızca tamamen boşsa değil, her açılışta güncellenir.
+    existing_slugs = {category.slug for category in await Category.find_all().to_list()}
+    missing_categories = [
+        Category(**category)
+        for category in DEFAULT_CATEGORIES
+        if category["slug"] not in existing_slugs
+    ]
+    if missing_categories:
+        await Category.insert_many(missing_categories)
 
     return mongo_client
 

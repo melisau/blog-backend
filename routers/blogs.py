@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Reques
 
 from core.config import ALLOWED_IMAGE_TYPES, MAX_IMAGE_SIZE_MB
 from core.deps import get_current_user
+from core.rate_limit import limit_blog_write
 from models.blog import Blog
 from models.category import Category
 from models.user import User
@@ -237,7 +238,7 @@ async def get_blog(blog_id: str) -> BlogResponse:
     return await blog_to_response(blog)
 
 
-@router.post("", response_model=BlogResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=BlogResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(limit_blog_write)])
 async def create_blog(
     request: Request,
     current_user: User = Depends(get_current_user),
@@ -279,7 +280,7 @@ async def create_blog(
     return await blog_to_response(blog)
 
 
-@router.put("/{blog_id}", response_model=BlogResponse)
+@router.put("/{blog_id}", response_model=BlogResponse, dependencies=[Depends(limit_blog_write)])
 async def update_blog(
     blog_id: str,
     request: Request,

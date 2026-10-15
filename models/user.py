@@ -5,11 +5,15 @@ from beanie import Document, PydanticObjectId
 from pydantic import EmailStr, Field
 from pymongo import ASCENDING, IndexModel
 
+from core.roles import UserRole
+
 
 class User(Document):
     username: str = Field(..., min_length=1, max_length=64)
     email: EmailStr
     hashed_password: str = Field(..., min_length=1)
+    # Legacy documents without a role remain ordinary users; never auto-promote.
+    role: UserRole = UserRole.USER
     bio: str | None = Field(default=None, max_length=300)
     icon_id: int = Field(default=1, ge=1)
     # Computed engagement counters

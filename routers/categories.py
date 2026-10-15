@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from core.deps import get_current_user
+from core.deps import require_admin
+from models.blog import Blog
 from models.category import Category
 from models.user import User
 from schemas.category import CategoryCreate, CategoryListResponse, CategoryResponse
@@ -25,7 +26,7 @@ async def get_category(category_id: str) -> CategoryResponse:
 @router.post("", response_model=CategoryResponse, status_code=status.HTTP_201_CREATED)
 async def create_category(
     payload: CategoryCreate,
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
 ) -> CategoryResponse:
     if await Category.find_one(Category.slug == payload.slug):
         raise HTTPException(
@@ -40,9 +41,14 @@ async def create_category(
 @router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_category(
     category_id: str,
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
 ) -> None:
     category = await Category.get(category_id)
     if not category:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found.")
+    if await Blog.find({"category.$id": category.id}).count():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Yazılarda kullanılan bir kategori silinemez.",
+        )
     await category.delete()

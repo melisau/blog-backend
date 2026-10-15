@@ -4,9 +4,12 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from schemas.types import PyObjectId
+from core.roles import UserRole
 
 
 class UserCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     username: str = Field(..., min_length=1, max_length=64)
     email: EmailStr
     password: str = Field(..., min_length=8)
@@ -24,6 +27,7 @@ class UserResponse(BaseModel):
 
     id: PyObjectId
     username: str
+    role: UserRole = UserRole.USER
     email: EmailStr | None = None
     bio: str | None = None
     icon_id: int | None = None
@@ -50,6 +54,8 @@ class UserPublicResponse(BaseModel):
 
 class UserUpdate(BaseModel):
     """Fields the owner may change on their own profile; all are optional."""
+
+    model_config = ConfigDict(extra="forbid")
 
     username: Optional[str] = Field(None, min_length=3, max_length=50)
     bio: Optional[str] = Field(None, max_length=300)

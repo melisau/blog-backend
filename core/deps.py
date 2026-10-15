@@ -1,8 +1,11 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
+from beanie import PydanticObjectId
+from bson.errors import InvalidId
+from jose import JWTError
 
-from core.config import JWT_ALGORITHM, JWT_SECRET
+from core.roles import UserRole
+from core.security import decode_access_token
 from models.user import User
 
 # Points to the login endpoint so FastAPI's OpenAPI UI can auto-fill the token form.
@@ -18,12 +21,8 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
     )
 
     try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        # sub holds the user's string ID set at token creation time.
-        user_id: str | None = payload.get("sub")
-        if user_id is None:
-            raise credentials_exception
-    except JWTError:
+        user_id = PydanticObjectId(decode_access_token(token))
+    except (JWTError, ValueError, TypeError, InvalidId):
         # Catches expired tokens, bad signatures, and malformed payloads uniformly.
         raise credentials_exception
 
@@ -33,3 +32,13 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
         raise credentials_exception
 
     return user
+
+
+async def require_admin(current_user: User = Depends(get_current_user)) -> User:
+    # Always use the current database role, not a JWT or client-provided role.
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bu işlem için yönetici yetkisi gerekiyor.",
+        )
+    return current_user
